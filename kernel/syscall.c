@@ -104,7 +104,10 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_trace(void);
 
+//a7存放系统调用号，当要使用系统调用的时候，a7载入对应的SYS_func号，然后由于保存的其实是函数的指针
+//然后就可以通过系统调用号启动对应的系统调用
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
@@ -127,6 +130,12 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_trace]   sys_trace
+};
+
+char *syscall_name[]={
+  "fork", "exit", "wait", "pipe", "read", "kill", "exec", "fstat", "chdir", "dup", "getpid",
+  "sbrk", "sleep", "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace"
 };
 
 void
@@ -134,11 +143,16 @@ syscall(void)
 {
   int num;
   struct proc *p = myproc();
-
+  int syscall_arg;
+  argint(0, &syscall_arg);
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
-  } else {
+    if((1 << num) & (p->mask)){ //1左移num位， num是系统调用号
+      printf("%d: sys_%s(%d) -> %d\n", p->pid, syscall_name[num], syscall_arg, p->trapframe->a0); //pid: name_of_sys_call(arg[1]) -> return_value
+    }
+  } 
+  else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
