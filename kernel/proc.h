@@ -1,4 +1,6 @@
 // Saved registers for kernel context switches.
+//the context is a set of callee-saved registers, 
+//which represents state of the task before it was preempted by other task (context switch)
 struct context {
   uint64 ra;
   uint64 sp;
@@ -79,6 +81,8 @@ struct trapframe {
   /* 272 */ uint64 t5;
   /* 280 */ uint64 t6;
 };
+//Trapframe stores register set which was saved during exception have arised, 
+//so using trapframe we can return back and proceed execution (when exception or irq will be handled)
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 

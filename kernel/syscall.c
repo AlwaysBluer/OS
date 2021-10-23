@@ -105,6 +105,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 //a7存放系统调用号，当要使用系统调用的时候，a7载入对应的SYS_func号，然后由于保存的其实是函数的指针
 //然后就可以通过系统调用号启动对应的系统调用
@@ -130,12 +131,14 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_trace]   sys_trace
+[SYS_trace]   sys_trace,
+[SYS_sysinfo] sys_sysinfo
 };
 
 char *syscall_name[]={
-  "fork", "exit", "wait", "pipe", "read", "kill", "exec", "fstat", "chdir", "dup", "getpid",
-  "sbrk", "sleep", "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace"
+  "","fork", "exit", "wait", "pipe", "read", "kill", "exec", "fstat", "chdir", "dup", "getpid",
+  "sbrk", "sleep", "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace",
+  "sysinfo"
 };
 
 void
@@ -158,3 +161,5 @@ syscall(void)
     p->trapframe->a0 = -1;
   }
 }
+
+

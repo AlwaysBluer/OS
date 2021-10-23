@@ -97,6 +97,7 @@ allocproc(void)
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
+      //if unused proc found, then go to allocpid
       goto found;
     } else {
       release(&p->lock);
@@ -139,6 +140,7 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  //trapframe is the information of process
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -384,7 +386,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
-
+  //if a process exit, turn the state ZOMBIE
   release(&original_parent->lock);
 
   // Jump into the scheduler, never to return.
@@ -440,6 +442,7 @@ wait(uint64 addr)
       release(&p->lock);
       return -1;
     }
+    //循环一遍发现没有子进程
     
     // Wait for a child to exit.
     sleep(p, &p->lock);  //DOC: wait-sleep
@@ -692,4 +695,36 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+//get the number of valuable file descriptor
+//reference: defination of exit()
+int
+num_freefd(void)
+{
+  int rest_num = 0;
+  struct proc *p = myproc();
+  for(int fd = 0; fd < NOFILE; fd++){
+    if(p->ofile[fd] == 0){
+      // struct file *f = p->ofile[fd];
+      // fileclose(f);
+      // p->ofile[fd] = 0;
+      rest_num++;
+    }
+  }
+  return rest_num;
+}
+
+//get the number of valuable process
+//reference: defination of kill()
+int 
+num_freeproc(void){
+  struct proc *p;
+  int free_proc = 0;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p->state != UNUSED) {
+      free_proc++ ;
+    }
+  }
+  return free_proc;
 }

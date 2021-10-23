@@ -24,14 +24,14 @@ argfd(int n, int *pfd, struct file **pf)
   int fd;
   struct file *f;
 
-  if(argint(n, &fd) < 0)
+  if(argint(n, &fd) < 0) //把第n位寄存器中的值作为文件描述符写入fd
     return -1;
   if(fd < 0 || fd >= NOFILE || (f=myproc()->ofile[fd]) == 0)
     return -1;
   if(pfd)
     *pfd = fd;
   if(pf)
-    *pf = f;
+    *pf = f;//指向（指向打开文件的指针f）的指针
   return 0;
 }
 
@@ -44,7 +44,7 @@ fdalloc(struct file *f)
   struct proc *p = myproc();
 
   for(fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd] == 0){
+    if(p->ofile[fd] == 0){ //遇见0分配文件描述符
       p->ofile[fd] = f;
       return fd;
     }

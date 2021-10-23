@@ -17,7 +17,7 @@ extern char end[]; // first address after kernel.
 struct run {
   struct run *next;
 };
-
+//run is a pure struct whose content is only the run ptr
 struct {
   struct spinlock lock;
   struct run *freelist;
@@ -47,7 +47,7 @@ void
 kfree(void *pa)
 {
   struct run *r;
-
+  //assure the ptr is int the address range
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
@@ -57,8 +57,8 @@ kfree(void *pa)
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
+  r->next = kmem.freelist; //the r connected with the head of freelist
+  kmem.freelist = r;//assign the r head of freelist
   release(&kmem.lock);
 }
 
@@ -74,9 +74,26 @@ kalloc(void)
   r = kmem.freelist;
   if(r)
     kmem.freelist = r->next;
+    //if r is not null, then the memory r pointing to is 
+    //allocated ,so move freelist to the next node of r 
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+// free memory_size
+int 
+freemem_size(void)
+{
+   struct run *p;
+   int chunk_num = 0;
+   //every step means the chunk_num increasing by 1
+   for(p = kmem.freelist; p ; p = p->next)
+   {
+      chunk_num ++;
+   }
+   return chunk_num * PGSIZE;
+}
+
