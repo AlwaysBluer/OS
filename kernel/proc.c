@@ -722,7 +722,7 @@ num_freeproc(void){
   struct proc *p;
   int free_proc = 0;
   for(p = proc; p < &proc[NPROC]; p++) {
-    if(p->state != UNUSED) {
+    if(p->state == UNUSED) {
       free_proc++ ;
     }
   }
