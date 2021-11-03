@@ -76,7 +76,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];//PX也不知道啥意思
-    if(*pte & PTE_V) {//看不懂
+    if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
@@ -280,6 +280,7 @@ freewalk(pagetable_t pagetable)
     pte_t pte = pagetable[i];
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
       // this PTE points to a lower-level page table.
+      //PTE_R, PTE_W, PTE_X ，PTE_V都是为1有效，通过与运算，判断是否PTE有效，后面那个等于-不知道什么意思。
       uint64 child = PTE2PA(pte);
       freewalk((pagetable_t)child);
       pagetable[i] = 0;  
@@ -450,3 +451,32 @@ test_pagetable()
   uint64 gsatp = MAKE_SATP(kernel_pagetable);
   return satp != gsatp;
 }
+
+void walkprint(pagetable_t pagetable, int depth)
+{
+  for(int i = 0; i < 512; i++)
+  {
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      if(pte & PTE_V){//如果是有效的,有下一级
+        for(int j = 0; j < depth; j++ )
+         {
+           if(j==depth-1) printf("||");
+           else printf("|| ");
+         }
+        printf("%d: pte %p", i, pte);
+        uint64 child = PTE2PA(pte);
+        printf(" pa %p\n", child);
+        if((pte & (PTE_R|PTE_W|PTE_X))==0)
+          walkprint((pagetable_t)child, depth+1);
+      }
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  walkprint(pagetable, 1);
+}
+
