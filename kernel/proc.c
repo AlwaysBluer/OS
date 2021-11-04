@@ -2,9 +2,11 @@
 #include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
+#include "elf.h"
+#include "defs.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "defs.h"
+#include "fs.h"
 
 struct cpu cpus[NCPU];
 
@@ -20,7 +22,7 @@ static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
-
+extern pagetable_t kernel_pagetable;
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -34,14 +36,14 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));//对应进程的内核栈
+      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va; //分配内核栈的物理页并在页表建立映射
   }
-  kvminithart();
+  // kvminithart();
 }
 
 // Must be called with interrupts disabled,
@@ -115,20 +117,36 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
+  if(p->pagetable == 0){//?????
     freeproc(p);
     release(&p->lock);
     return 0;
   }
 
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
+  p->kernel_pagetable = prockpt_init(); //创建了进程的内核页表
+  if(p->kernel_pagetable == 0){//????
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+// Allocate a page for the process's kernel stack.
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));//对应进程的内核栈
+  // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  mappages(p->kernel_pagetable, va, PGSIZE, (uint64)pa, PTE_R|PTE_W);
+  p->kstack = va; //分配内核栈的物理页并在页表建立映射
+
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  
   return p;
 }
+
+
+
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -141,7 +159,21 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  //这里是释放物理页？？？
+  if (p->kstack)
+  {
+      pte_t* pte = walk(p->kernel_pagetable, p->kstack, 0);
+      if (pte == 0)
+          panic("freeproc: walk");
+      kfree((void*)PTE2PA(*pte));
+  }
+  p->kstack = 0;
+  //释放页表
+  if(p->kernel_pagetable)
+    proc_freekpagetable(p->kernel_pagetable);
+  // p->kstack = 0;
   p->pagetable = 0;
+  p->kernel_pagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -387,7 +419,7 @@ exit(int status)
 
   release(&original_parent->lock);
 
-  // Jump into the scheduler, never to return.
+  // Jump into the , never to return.
   sched();
   panic("zombie exit");
 }
@@ -453,6 +485,10 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+//在进行进程调度的时候，因为每个进程有自己的内核页表，因此需要将内核页表转入satp寄存器作为页表基址
+//原来的话由于是全局共享一个内核页表，因此在kvminithart的时候就装入，后续进程调度的时候无需切换
+//在遍历进程的过程中，有可能会出现找不到就绪状态的进程（或者没有进程），这个时候就无法使用进程自己的内核页表
+//需要使用内核的全局页表（问题二里面共享内核页表也就这个地方有用）
 void
 scheduler(void)
 {
@@ -473,7 +509,13 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        //如果找到了可执行的进程，需要将进程的内核页表存入satp寄存器（供查询pte使用
+        //仿照kvminithart
+        w_satp(MAKE_SATP(p->kernel_pagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
+
+        kvminithart();
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -485,7 +527,9 @@ scheduler(void)
     }
 #if !defined (LAB_FS)
     if(found == 0) {
+      //如果当前没有进程在运行就使用内核自己的页表
       intr_on();
+      kvminithart();//可能要改。
       asm volatile("wfi");
     }
 #else

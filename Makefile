@@ -18,8 +18,8 @@ OBJS = \
   $K/spinlock.o \
   $K/string.o \
   $K/main.o \
-  $K/vm.o \
   $K/proc.o \
+  $K/vm.o \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
