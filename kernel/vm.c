@@ -85,7 +85,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     pte_t *pte = &pagetable[PX(level, va)];//PX(level, va)的作用是通过64位的虚拟地址找到对应的index，从而确定pte
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
-    } else {//如果没找打或者找到的pte是无效的
+    } else {//如果没找到或者找到的pte是无效的
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;//如果分配失败或者不需要分配就返回零（前提是没有找到）
       memset(pagetable, 0, PGSIZE);
@@ -399,23 +399,24 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
+  // }
+  // return 0;
+  return copyin_new(pagetable, dst, srcva, len);
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -425,40 +426,41 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  // uint64 n, va0, pa0;
+  // int got_null = 0;
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > max)
+  //     n = max;
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
+  //   char *p = (char *) (pa0 + (srcva - va0));
+  //   while(n > 0){
+  //     if(*p == '\0'){
+  //       *dst = '\0';
+  //       got_null = 1;
+  //       break;
+  //     } else {
+  //       *dst = *p;
+  //     }
+  //     --n;
+  //     --max;
+  //     p++;
+  //     dst++;
+  //   }
 
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  //   srcva = va0 + PGSIZE;
+  // }
+  // if(got_null){
+  //   return 0;
+  // } else {
+  //   return -1;
+  // }
+  return copyinstr_new(pagetable, dst, srcva, max);
 }
 
 // check if use global kpgtbl or not 
@@ -475,7 +477,6 @@ void walkprint(pagetable_t pagetable, int depth)
   for(int i = 0; i < 512; i++)
   {
     pte_t pte = pagetable[i];
-    if(pte & PTE_V){
       if(pte & PTE_V){//如果是有效的,有下一级
         for(int j = 0; j < depth; j++ )
          {
@@ -488,7 +489,6 @@ void walkprint(pagetable_t pagetable, int depth)
         if((pte & (PTE_R|PTE_W|PTE_X))==0)
           walkprint((pagetable_t)child, depth+1);
       }
-    }
   }
 }
 
@@ -532,3 +532,26 @@ void proc_freekpagetable(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+//函数功能：得到从oldsz（用户页表）开始到newsz结束的pte （pte_from
+//在进程的内核页表的对应位置创建pte(pte_to
+//并且把内容拷贝进去（同时将PTE_U置为0使得内核可使用。）
+void u2kvmcopy(pagetable_t pagetable, pagetable_t kernel_pagetable, uint64 oldsz, uint newsz)
+{
+  pte_t *pte_from, *pte_to;
+  uint64 a, pa;
+  uint flags;
+
+  for(a = oldsz; a < newsz; a += PGSIZE){
+    if((pte_from = walk(pagetable , a, 0)) == 0)
+      panic("u2kvmcopy:pte not exist!");
+    if((pte_to = walk(kernel_pagetable, a, 1)) == 0)
+      panic("u2kvmcopy: walk fails");
+    pa = PTE2PA(*pte_from);
+    flags = (PTE_FLAGS(*pte_from) & (~PTE_U));
+    *pte_to = PA2PTE(pa) | flags;
+  }
+} 
+
+//疑惑的地方：
+//内核是在哪里使用内核页表的，换句话说，这个内核页表中的用户地址的映射是在哪里用的
+//walk和walkfree还要重点看看

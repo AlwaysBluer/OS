@@ -159,7 +159,7 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
-  //这里是释放物理页？？？
+  //这里是kernel_stack的释放
   if (p->kstack)
   {
       pte_t* pte = walk(p->kernel_pagetable, p->kstack, 0);
@@ -252,7 +252,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-
+  u2kvmcopy(p->pagetable, p->kernel_pagetable, 0, p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -275,9 +275,14 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    // 不能覆盖PLIC地址空间
+    if (PGROUNDUP(sz + n) >= PLIC)
+      return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+
+    u2kvmcopy(p->pagetable, p->kernel_pagetable, sz-n, sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
@@ -306,7 +311,8 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  //将进程的用户页表的映射拷贝到进程内核页表中
+   
   np->parent = p;
 
   // copy saved user registers.
@@ -320,7 +326,7 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
-
+  u2kvmcopy(np->pagetable, np->kernel_pagetable, 0, np->sz);
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;

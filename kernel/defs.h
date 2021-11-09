@@ -185,6 +185,11 @@ void            ukvmmap(pagetable_t pagetable , uint64 va, uint64 pa, uint64 sz,
 pagetable_t     prockpt_init();
 void proc_freekpagetable(pagetable_t pagetable);
 pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
+void            u2kvmcopy(pagetable_t pagetable, pagetable_t kernel_pagetable, uint64 oldsz, uint newsz);
+
+
+int             copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
+int             copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
 
 
 // plic.c
